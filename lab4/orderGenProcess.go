@@ -1,125 +1,117 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"sync"
 	"time"
-	"errors"
 )
 
-const (	
-	numOrders        = 20 
-	numWorkers       = 5  
-	maxRetries       = 2  
+const (
+	numOrders        = 20
+	numWorkers       = 5
+	maxRetries       = 2
 	baseSuccessRate  = 0.8
 	retrySuccessRate = 0.6
 )
 
-func orderGenerator(ordersChan chan<- Order, wg *sync.WaitGroup) {
-	defer wg.Done() 
-	defer close(ordersChan)
-
-	fmt.Println("Generator zamówień: Start")
+func orderGenerator(numOrders int, ordersChan chan<- Order) {
 	for i := 1; i <= numOrders; i++ {
 		order := generateNewOrder(i)
-		fmt.Printf("Generator: Wygenerowano zamówienie ID %d dla %s (%.2f PLN)\n", order.ID, order.CustomerName, order.TotalAmount)
-		ordersChan <- order
+		fmt.Printf("Wygenerowano zamówienie #%d dla %s na kwotę %.2f zł\n", order.ID, order.CustomerName, order.TotalAmount)
 
-		
-		sleepDuration := time.Duration(rand.IntN(500)+50) * time.Millisecond
-		time.Sleep(sleepDuration)
+		time.Sleep(time.Duration(rand.IntN(400)+100) * time.Millisecond)
+
+		ordersChan <- order
 	}
-	fmt.Println("Generator zamówień: Zakończono generowanie.")
+	close(ordersChan)
 }
 
-func processOrderWorker(id int, ordersChan <-chan Order, resultsChan chan<- ProcessResult, wg *sync.WaitGroup) {
-	defer wg.Done() // Zasygnalizuj zakończenie pracy workera
+func processOrder(order Order) ProcessResult {
+	processingTime := time.Duration(rand.IntN(700)+300) * time.Millisecond
+	time.Sleep(processingTime)
 
-	fmt.Printf("Worker %d: Start\n", id)
-	for order := range ordersChan { // Pętla działa dopóki kanał ordersChan nie zostanie zamknięty i opróżniony
-		fmt.Printf("Worker %d: Przetwarzanie zamówienia ID %d dla %s\n", id, order.ID, order.CustomerName)
+	var err error
+	success := true
 
-		var result ProcessResult
-		success := false
-		var processingErr error
-		var totalProcessingTime time.Duration
-		attempts := 0
+	if rand.IntN(10) == 0 { //10% szans na błąd
+		err = errors.New("błąd przetwarzania zamówienia")
+		success = false
+	}
 
-		for attempts = 1; attempts <= maxRetries+1; attempts++ {
-			// startTime := time.Now()
-			processingDuration := time.Duration(rand.IntN(500)+100) * time.Millisecond
-			time.Sleep(processingDuration)
-			totalProcessingTime += processingDuration
+	return ProcessResult{
+		OrderID:      order.ID,
+		CustomerName: order.CustomerName,
+		Success:      success,
+		ProcessTime:  processingTime,
+		Error:        err,
+	}
+}
 
-			successRate := baseSuccessRate
-			if attempts > 1 {
-				successRate = retrySuccessRate 
-				fmt.Printf("Worker %d: Ponowna próba (%d/%d) zamówienia ID %d\n", id, attempts-1, maxRetries, order.ID)
+func collectResults(results <-chan ProcessResult, failedOrders chan<- Order, wg *sync.WaitGroup, totalOrders int) {
+	defer wg.Done()
+
+	var successful, failed int
+
+	for i := 0; i < totalOrders; i++ {
+		result := <-results
+
+		if result.Success {
+			fmt.Printf("Zamówienie #%d od %s przetworzone pomyślnie w czasie %v\n",
+				result.OrderID, result.CustomerName, result.ProcessTime)
+			successful++
+		} else {
+			fmt.Printf("Zamówienie #%d od %s NIE powiodło się: %v\n",
+				result.OrderID, result.CustomerName, result.Error)
+			failed++
+
+			order := Order{
+				ID:           result.OrderID,
+				CustomerName: result.CustomerName,
 			}
+			failedOrders <- order
+		}
+	}
 
-			if rand.Float64() < successRate {
-				success = true
-				processingErr = nil 
-				fmt.Printf("Worker %d: Sukces przetwarzania zamówienia ID %d (próba %d)\n", id, order.ID, attempts)
-				break 
-			} else {
-				success = false
-				processingErr = errors.New("błąd symulacji przetwarzania") 
-				fmt.Printf("Worker %d: Niepowodzenie przetwarzania zamówienia ID %d (próba %d)\n", id, order.ID, attempts)
-				if attempts > maxRetries {
-					fmt.Printf("Worker %d: Osiągnięto limit prób dla zamówienia ID %d\n", id, order.ID)
-					break
-				}
-				
-				time.Sleep(time.Duration(rand.IntN(100)+50) * time.Millisecond)
-			}
+	close(failedOrders)
+
+	fmt.Println("\n--- STATYSTYKI PRZETWARZANIA ---")
+	fmt.Printf("Łącznie przetworzono: %d zamówień\n", totalOrders)
+	fmt.Printf("Udane: %d (%.1f%%)\n", successful, float64(successful)/float64(totalOrders)*100)
+	fmt.Printf("Nieudane: %d (%.1f%%)\n", failed, float64(failed)/float64(totalOrders)*100)
+}
+
+func retryFailedOrders(failedOrders <-chan Order, results chan<- ProcessResult, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	var retryCount int
+
+	for order := range failedOrders {
+		retryCount++
+		fmt.Printf("Ponowna próba dla zamówienia #%d od %s\n", order.ID, order.CustomerName)
+
+		var err error
+		success := true
+
+		if rand.IntN(20) == 0 { //5% szansy na błąd
+			err = errors.New("błąd ponownego przetwarzania zamówienia")
+			success = false
 		}
 
-		result = ProcessResult{
+		processingTime := time.Duration(rand.IntN(200)+100) * time.Millisecond
+		time.Sleep(processingTime)
+
+		result := ProcessResult{
 			OrderID:      order.ID,
 			CustomerName: order.CustomerName,
 			Success:      success,
-			ProcessTime:  totalProcessingTime, 
-			Error:        processingErr,       
+			ProcessTime:  processingTime,
+			Error:        err,
 		}
 
-		resultsChan <- result
-	}
-	fmt.Printf("Worker %d: Koniec pracy (kanał zamówień zamknięty)\n", id)
-}
-
-func resultsCollector(resultsChan <-chan ProcessResult, wg *sync.WaitGroup) {
-	defer wg.Done() // Zasygnalizuj zakończenie pracy kolektora
-
-	fmt.Println("Kolektor wyników: Start")
-	var successCount, failureCount int
-	var totalProcessed int
-
-	for result := range resultsChan { // Pętla działa dopóki kanał resultsChan nie zostanie zamknięty i opróżniony
-		totalProcessed++
-		fmt.Printf("Kolektor: Otrzymano wynik dla zamówienia ID %d (Klient: %s, Sukces: %t, Czas: %v, Błąd: %v)\n",
-			result.OrderID, result.CustomerName, result.Success, result.ProcessTime, result.Error)
-		if result.Success {
-			successCount++
-		} else {
-			failureCount++
-		}
+		results <- result
 	}
 
-	// Obliczanie statystyk
-	fmt.Println("\n--- Statystyki końcowe ---")
-	fmt.Printf("Całkowita liczba przetworzonych (lub prób przetworzenia) zamówień: %d\n", totalProcessed)
-	fmt.Printf("Zamówienia przetworzone pomyślnie: %d\n", successCount)
-	fmt.Printf("Zamówienia zakończone niepowodzeniem (po %d próbach): %d\n", maxRetries, failureCount)
-
-	if totalProcessed > 0 {
-		successRate := float64(successCount) / float64(totalProcessed) * 100
-		failureRate := float64(failureCount) / float64(totalProcessed) * 100
-		fmt.Printf("Procent zamówień zakończonych sukcesem: %.2f%%\n", successRate)
-		fmt.Printf("Procent zamówień zakończonych niepowodzeniem: %.2f%%\n", failureRate)
-	} else {
-		fmt.Println("Nie przetworzono żadnych zamówień.")
-	}
-	fmt.Println("Kolektor wyników: Zakończono zbieranie.")
+	fmt.Printf("Zakończono ponowne próby dla %d zamówień\n", retryCount)
 }
