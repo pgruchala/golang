@@ -105,6 +105,33 @@ func main() {
 	} else {
 		printItems(items, 0)
 	}
+	item, err := fs.findItem("/")
+    if err != nil {
+        fmt.Printf("Błąd przy wyszukiwaniu '/': %v\n", err)
+    } else {
+        fmt.Printf("Znaleziono katalog główny: %s\n", item.Path())
+    }
+	
+	fmt.Println("\nWyświetlanie Katalogu domowego")
+	items, err = fs.List("/")
+	if err != nil {
+		fmt.Printf("Error listing /: %v\n", err)
+	} else {
+		printItems(items, 0)
+	}
+
+	item, err = fs.findItem("/docs")
+    if err != nil {
+        fmt.Printf("\nBłąd przy wyszukiwaniu '/docs': %v\n", err)
+    } else {
+        fmt.Printf("Znaleziono katalog: %s\n", item.Path())
+    }
+	item, err = fs.findItem("/docs/note.txt")
+    if err != nil {
+        fmt.Printf("Błąd przy wyszukiwaniu '/docs/note.txt': %v\n", err)
+    } else {
+        fmt.Printf("Znaleziono plik: %s (rozmiar: %d bajtów)\n", item.Path(), item.Size())
+    }
 }
 
 func printItems(items []FileSystemItem, indent int) {
