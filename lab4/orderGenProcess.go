@@ -53,7 +53,8 @@ func collectResults(results <-chan ProcessResult, failedOrders chan<- Order, wg 
 	defer wg.Done()
 
 	var successful, failed int
-
+	var failedOrderIDs = make(map[int]bool)
+	
 	for i := 0; i < totalOrders; i++ {
 		result := <-results
 
@@ -65,6 +66,7 @@ func collectResults(results <-chan ProcessResult, failedOrders chan<- Order, wg 
 			fmt.Printf("Zamówienie #%d od %s NIE powiodło się: %v\n",
 				result.OrderID, result.CustomerName, result.Error)
 			failed++
+			failedOrderIDs[result.OrderID] = true
 
 			order := Order{
 				ID:           result.OrderID,
@@ -86,32 +88,66 @@ func retryFailedOrders(failedOrders <-chan Order, results chan<- ProcessResult, 
 	defer wg.Done()
 
 	var retryCount int
+	var retrySuccessful, retryFailed int
+	var retryResultsMutex sync.Mutex
+	var retriedOrders []Order
 
 	for order := range failedOrders {
-		retryCount++
-		fmt.Printf("Ponowna próba dla zamówienia #%d od %s\n", order.ID, order.CustomerName)
-
-		var err error
-		success := true
-
-		if rand.IntN(20) == 0 { //5% szansy na błąd
-			err = errors.New("błąd ponownego przetwarzania zamówienia")
-			success = false
-		}
-
-		processingTime := time.Duration(rand.IntN(200)+100) * time.Millisecond
-		time.Sleep(processingTime)
-
-		result := ProcessResult{
-			OrderID:      order.ID,
-			CustomerName: order.CustomerName,
-			Success:      success,
-			ProcessTime:  processingTime,
-			Error:        err,
-		}
-
-		results <- result
+		retriedOrders = append(retriedOrders, order)
 	}
+	
+	retryCount = len(retriedOrders)
+	
+	if retryCount > 0 {
+		var retryWg sync.WaitGroup
+		
+		for _, order := range retriedOrders {
+			retryWg.Add(1)
+			go func(o Order) {
+				defer retryWg.Done()
+				
+				fmt.Printf("Ponowna próba dla zamówienia #%d od %s\n", o.ID, o.CustomerName)
 
-	fmt.Printf("Zakończono ponowne próby dla %d zamówień\n", retryCount)
+				var err error
+				success := true
+
+				if rand.IntN(20) == 0 { // 5% szansy na błąd
+					err = errors.New("błąd ponownego przetwarzania zamówienia")
+					success = false
+				}
+
+				processingTime := time.Duration(rand.IntN(200)+100) * time.Millisecond
+				time.Sleep(processingTime)
+
+				result := ProcessResult{
+					OrderID:      o.ID,
+					CustomerName: o.CustomerName,
+					Success:      success,
+					ProcessTime:  processingTime,
+					Error:        err,
+				}
+
+				retryResultsMutex.Lock()
+				if success {
+					retrySuccessful++
+				} else {
+					retryFailed++
+				}
+				retryResultsMutex.Unlock()
+				
+				results <- result
+			}(order)
+		}
+		
+		retryWg.Wait()
+		
+		fmt.Printf("Zakończono ponowne próby dla %d zamówień\n", retryCount)
+		
+		fmt.Println("\n--- STATYSTYKI PONOWNYCH PRÓB ---")
+		fmt.Printf("Łącznie ponownych prób: %d\n", retryCount)
+		fmt.Printf("Udane ponowne próby: %d (%.1f%%)\n", retrySuccessful, 
+			float64(retrySuccessful)/float64(retryCount)*100)
+		fmt.Printf("Nieudane ponowne próby: %d (%.1f%%)\n", retryFailed, 
+			float64(retryFailed)/float64(retryCount)*100)
+	}
 }
