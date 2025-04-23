@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -30,6 +29,4 @@ func main() {
 	go retryFailedOrders(failedOrdersChan, resultsChan, &wg)
 	
 	wg.Wait()
-	
-	fmt.Println("\nSymulacja zakończona")
 }
