@@ -1,6 +1,11 @@
 package main
 
-import("time")
+import "time"
+
+type StopsRes struct {
+	Stops []Stop `json:"stops"`
+}
+
 
 type Stop struct {
 	StopID        int    `json:"stopId"`
@@ -17,18 +22,26 @@ type Stop struct {
 	ParentStation string `json:"parentStation"`
 	StopTimezone  string `json:"stopTimezone"`
 	WheelchairBoarding int `json:"wheelchairBoarding"`
-	Virtual       bool   `json:"virtual"`
-	NonPassenger  bool   `json:"nonPassenger"`
+	Virtual       int   `json:"virtual"`
+	NonPassenger  int   `json:"nonPassenger"`
 }
 
-type Prediction struct {
-	TripID      string    `json:"tripId"`
-	StopID      int       `json:"stopId"`
-	StopSequence int       `json:"stopSequence"`
-	ArrivalTime time.Time `json:"arrivalTime"`
-	DepartureTime time.Time `json:"departureTime"`
-	Timepoint     bool      `json:"timepoint"`
-	StopHeadsign string    `json:"stopHeadsign"`
-	Realtime      bool      `json:"realtime"`
-   
+type DeparturesRes struct {
+	EstimatedDepartures []EstimatedDeparture `json:"departures"`
+}
+
+type EstimatedDeparture struct {
+	RouteID         int `json:"routeId"`
+	Headsign        string `json:"headsign"`
+	EstimatedTime   string `json:"estimatedTime"`
+	DelayInSeconds  int    `json:"delayInSeconds"`
+	ActualTime      string `json:"actualTime"`
+}
+
+func formatTime(timeStr string) string {
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		return timeStr 
+	}
+	return t.Format("15:04:05")
 }
