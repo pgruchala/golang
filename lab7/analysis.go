@@ -10,10 +10,20 @@ import (
 
 func displayCurrentWeather(data WeatherResponse, cityName string) {
 	table := tablewriter.NewWriter(os.Stdout)
-	table.Header([]string{"Parametr", "Wartość"})
 
+	var dayNight string
+	if data.Current.IsDay == 1 {
+		dayNight = "Dzień"
+	} else {
+		dayNight = "Noc"
+	}
+
+	table.Header([]string{"Parametr", "Wartość"})
+	table.Append([]string{"Pora dnia", dayNight})
 	table.Append([]string{"Temperatura", fmt.Sprintf("%.1f °C", data.Current.Temperature)})
+	table.Append([]string{"Temperatura odczuwalna", fmt.Sprintf("%.1f °C", data.Current.ApparentTemperature)})
 	table.Append([]string{"Prędkość wiatru", fmt.Sprintf("%.1f km/h", data.Current.WindSpeed)})
+	table.Append([]string{"Indeks UV", fmt.Sprintf("%.1f", data.Current.UvIndex)})
 	table.Append([]string{"Warunki", getWeatherDescription(data.Current.WeatherCode)})
 
 	table.Render()

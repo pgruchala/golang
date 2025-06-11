@@ -14,9 +14,12 @@ type WeatherResponse struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	Current   struct {
-		Temperature float64 `json:"temperature_2m"`
-		WindSpeed   float64 `json:"wind_speed_10m"`
-		WeatherCode int     `json:"weather_code"`
+		Temperature         float64 `json:"temperature_2m"`
+		ApparentTemperature float64 `json:"apparent_temperature"`
+		WindSpeed           float64 `json:"wind_speed_10m"`
+		WeatherCode         int     `json:"weather_code"`
+		UvIndex             float64 `json:"uv_index"`
+		IsDay               int     `json:"is_day"`
 	} `json:"current"`
 	Daily struct {
 		Time        []string  `json:"time"`
@@ -29,7 +32,7 @@ type WeatherResponse struct {
 }
 
 func fetchCurrentWeather(lat, lon float64) (*WeatherResponse, error) {
-	params := "current=temperature_2m,wind_speed_10m,weather_code"
+	params := "current=temperature_2m,apparent_temperature,wind_speed_10m,weather_code,uv_index,is_day"
 	url := fmt.Sprintf("%s?latitude=%.4f&longitude=%.4f&%s", baseURL, lat, lon, params)
 	return fetchWeatherData(url)
 }
